@@ -139,7 +139,7 @@ class Client:
         self.host = host
         self.port = int(port)
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._socket.settimeout(5)
+        self._socket.settimeout(10)
         self._error_stack = []
         self.receiver_mode = False
 
@@ -273,6 +273,9 @@ class Client:
         self.send_pdu(dsmr)
         self.message_received_handler(pdu=p)
 
+    def _send_message_resp_received(self, p):
+        self.send_message_resp_received_handler(pdu=p)
+
     def _enquire_link_received(self):
         ler = smpp.make_pdu('enquire_link_resp')#, message_id=args['pdu'].sm_default_msg_id)
         self.send_pdu(ler)
@@ -283,12 +286,22 @@ class Client:
 
         self.message_received_handler = func
 
+    def set_send_message_resp_received_handler(self, func):
+        """Set new function to handle message receive event"""
+
+        self.message_received_handler = func
 
     @staticmethod
     def message_received_handler(**args):
         """Custom handler to process received message. May be overridden"""
 
         log('Message received handler (shoud be overridden)')
+
+    @staticmethod
+    def send_message_received_resp_handler(**args):
+        """Custom handler to process received message. May be overridden"""
+
+        log('Send Message Response received handler (shoud be overridden)')
     
         
     def listen(self):
@@ -304,7 +317,6 @@ class Client:
             except socket.timeout:
                 log('Socket timeout, listening again')
                 continue
-
             if p.command == 'unbind': #unbind_res
                 log('Unbind command received')
                 break
@@ -312,6 +324,8 @@ class Client:
                 self._message_received(p)
             elif p.command == 'enquire_link':
                 self._enquire_link_received()
+            elif p.command == 'submit_sm_resp':
+                self._send_message_resp_received(p)
             else:
                 print "WARNING: Unhandled SMPP command '%s'" % p.command
                 
@@ -334,6 +348,20 @@ class Client:
 
         return resp
 
+
+    def send_message_async(self, **args):
+        """Send message
+        
+        Required Arguments:
+            source_addr_ton -- Source address TON
+            source_addr -- Source address (string)
+            dest_addr_ton -- Destination address TON
+            destination_addr -- Destination address (string)
+            short_message -- Message text (string)"""
+
+        ssm = smpp.make_pdu('submit_sm', **(args))
+
+        self.send_pdu(ssm)
 
     def _push_pdu(self, p):
         """Push PDU into a stack"""
